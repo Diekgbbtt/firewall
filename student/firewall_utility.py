@@ -1,0 +1,57 @@
+# YOU CAN MODIFY THIS FILE
+
+import csv
+
+def parse_nat_config (filepath):
+    data = []
+    with open(filepath, mode='r') as file:
+        csv_reader = csv.DictReader(file)
+        for row in csv_reader:
+            data.append({
+                "NatType": row['NatType'],
+                "Internal_IP": row['Internal_IP'],
+                "External_IP": row['External_IP']
+            })
+    return data
+
+def parse_blacklist_config (filepath):
+    data = []
+    with open(filepath, mode='r') as file:
+        csv_reader = csv.DictReader(file)
+        for row in csv_reader:
+            source_port_start, source_port_end = map(int, row['Source_Port'].split('-'))
+            dest_port_start, dest_port_end = map(int, row['Destination_Port'].split('-'))
+            data.append({
+                "Protocol": row['Protocol'],
+                "Source_IP": row['Source_IP'],
+                "Destination_IP": row['Destination_IP'],
+                "Source_Port": (source_port_start, source_port_end),
+                "Destination_Port": (dest_port_start, dest_port_end)
+            })
+    return data
+
+def parse_ratelimit_config (filepath):
+    data = {}
+    with open(filepath, mode='r') as file:
+        csv_reader = csv.DictReader(file)
+        for row in csv_reader:
+            data = {"Ratelimit": float(row['Ratelimit']), "IdleLifespan": float(row['IdleLifespan'])}
+            return data
+        
+
+
+def parse_ttl_config (filepath):
+    data = {}
+    with open(filepath, mode='r') as file:
+        csv_reader = csv.DictReader(file)
+        for row in csv_reader:
+            data = {"MaxTTL": int(row['MaxTTL']), "MinTTL": int(row['MinTTL'])}
+            return data
+        
+def parse_portscan_config (filepath):
+    data = {}
+    with open(filepath, mode='r') as file:
+        csv_reader = csv.DictReader(file)
+        for row in csv_reader:
+            data = {"SynNum": int(row['SynNum']), "MaxPacketInterval": float(row['MaxPacketInterval'])}
+            return data

@@ -1,0 +1,4 @@
+NatType,Internal_IP,External_IP,ReservationTime,
+Quarter,127.3.12.0/24,127.128.0.3,2.0,
+Half,127.4.10.0/24,127.128.0.4,2.0,
+Full,127.5.11.0/24,127.128.0.5,2.0,
