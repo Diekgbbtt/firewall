@@ -49,6 +49,43 @@ def firewall_init ():
 
     return task_selection
 
+
+def distributed_rate_limit(pkt):
+    # DDoS
+    pass
+
+def synack_scan(pkt):
+    pass
+
+def rate_limit(pkt):
+
+    pass
+
+def ttl_within_range(pkt):
+
+    pass
+
+def is_blacklisted(pkt):
+
+    pass
+
+def empty_IPpayload(pkt):
+
+    return dpkt.ip.IP(pkt.get_payload()).data != 0
+
+def handle(pkt) -> bool :
+    ip_pkt = dpkt.ip.IP(pkt.get_payload())
+    tcp_check = lambda p: synack_scan(p) if ip_pkt.p == dpkt.ip.IP_PROTO_TCP else True
+    return (
+        empty_IPpayload(pkt)
+        and is_blacklisted(pkt)
+        and ttl_within_range(pkt)
+        and rate_limit(pkt)
+        and tcp_check(pkt)
+        and distributed_rate_limit(pkt)
+    )
+
+
 # DO NOT MODIFY SIGNATURE
 def firewall_packet_handler(pkt):
     global ratelimit_R
@@ -59,11 +96,28 @@ def firewall_packet_handler(pkt):
     ip = dpkt.ip.IP(pkt.get_payload())
     ts = pkt.get_timestamp()
 
-    # TODO: Implement your packet firewall logic
-    gut_feeling = True 
-
-    if gut_feeling:
+    try:
+        decision = handle(pkt)
+    except Exception as e:
+        print("error : %s", e)
+        pkt.accept() # fail-open
+    
+    if decision:
         pkt.accept()
     else:
         pkt.drop()
-    return
+    # ONLY for NAT
+    #  modfiy and accept : 
+    # raw = pkt.get_payload()
+    # ip = dpkt.ip.IP(raw)
+    # edit ip ...
+    # pkt.set_payload(bytes(ip/tcp/udp))
+
+    # TODO: Implement your packet firewall logic
+    # gut_feeling = True 
+
+    # if gut_feeling:
+    #     pkt.accept()
+    # else:
+    #     pkt.drop()
+    # return
