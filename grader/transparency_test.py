@@ -1,8 +1,10 @@
 import ipaddress
+import os
 import random
+import socket
 import string
-import random
 import threading
+import time
 from grader_utility import *
 
 
@@ -13,51 +15,104 @@ def transparency_test ():
 # Think about how to approach testing this firewall feature. We suggest using a similar approach as with the transparency test.
 # This is not graded but the intended use is that this function returns 1 if your firewall is perfectly transparent to legitimate traffic, and 0 if it fails completely.
 
-# This is the loopback interface
     localhost_network = ipaddress.ip_network("127.0.0.0/8")
-# Generate some random IP addresses on the loopback interface
-    src_IP = bool_list_to_ip(randomize_bool_list_suffix(ip_to_bool_list(localhost_network.network_address), localhost_network.prefixlen))
-    dst_IP = bool_list_to_ip(randomize_bool_list_suffix(ip_to_bool_list(localhost_network.network_address), localhost_network.prefixlen))
-# Generate some random port numbers
-    src_port = random.randrange(1024, 65536) # We do not use port numbers lower than 1024 as they are reserved
-    dst_port = random.randrange(1024, 65536) # We do not use port numbers lower than 1024 as they are reserved
-# Test transparence using a TCP connection
-    proto = "TCP"
 
-# Generate a test message we will transmit
+    # Load blacklist rules so we pick src/dst tuples outside all blocked ranges.
+    # blacklist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "configuration_files", "blacklist_config.csv")
+    # try:
+    #     blacklist_rules = parse_blacklist_config(blacklist_path)
+    # except Exception:
+    #     blacklist_rules = []
+
+    # def _is_blocked(proto, src_ip, dst_ip, src_port, dst_port):
+    #     for rule in blacklist_rules:
+    #         if not isinstance(rule, dict):
+    #             continue
+    #         rule_proto = rule["Protocol"].upper()
+    #         if rule_proto not in ("IP", proto):
+    #             continue
+    #         if ipaddress.ip_address(src_ip) not in ipaddress.ip_network(rule["Source_IP"]):
+    #             continue
+    #         if ipaddress.ip_address(dst_ip) not in ipaddress.ip_network(rule["Destination_IP"]):
+    #             continue
+    #         s_min, s_max = rule["Source_Port"]
+    #         d_min, d_max = rule["Destination_Port"]
+    #         if not (s_min <= src_port <= s_max):
+    #             continue
+    #         if not (d_min <= dst_port <= d_max):
+    #             continue
+    #         return True
+    #     return False
+
+    # def _pick_tuple(proto):
+    #     for _ in range(256):
+    #         src_ip = bool_list_to_ip(randomize_bool_list_suffix(ip_to_bool_list(localhost_network.network_address), localhost_network.prefixlen))
+    #         dst_ip = bool_list_to_ip(randomize_bool_list_suffix(ip_to_bool_list(localhost_network.network_address), localhost_network.prefixlen))
+    #         src_port = random.randrange(1024, 65536)
+    #         dst_port = random.randrange(1024, 65536)
+    #         if not _is_blocked(proto, str(src_ip), str(dst_ip), src_port, dst_port):
+    #             return str(src_ip), str(dst_ip), src_port, dst_port
+    #     raise RuntimeError("Could not find non-blacklisted address/port tuple for transparency test")
+
+    # TODO must be used to make a proper transparency check but improve efficiency, rather than checking dinamically set both tuple srcip,srcpo and dstip,dstport to value that are not currently in the blacklisting rules 
+    #  Test transparence using a TCP connection with non-blacklisted tuple.
+    #  src_IP, dst_IP, src_port, dst_port = _pick_tuple("TCP")
+    
+    src_IP = str(bool_list_to_ip(randomize_bool_list_suffix(ip_to_bool_list(localhost_network.network_address), localhost_network.prefixlen)))
+    dst_IP = str(bool_list_to_ip(randomize_bool_list_suffix(ip_to_bool_list(localhost_network.network_address), localhost_network.prefixlen)))
+    # Generate some random port number
+    src_port = random.randrange(1024, 65536) # We do not use port numbers lower than 1024 as they are reserved
+    dst_port = random.randrange(1024, 65536)
+
     test_message = bytes(''.join(random.choices(string.ascii_uppercase + string.digits, k=100)), encoding='utf8')
-# Create objects to store TCP connection data
     pkt_adr_log = []
     time_log = []
-# Spawn a thread that listens for a TCP connection at teh destination
-    tcp_recieve_thread = threading.Thread(target=tcp_listen, args= (str(dst_IP), dst_port, 1.0, pkt_adr_log, time_log))
+
+    tcp_recieve_thread = threading.Thread(target=tcp_listen, args=(dst_IP, dst_port, 1.0, pkt_adr_log, time_log))
     tcp_recieve_thread.start()
 
-# Sleep a while to ensure the listener-thread is listening. We require this because python threads are not actually real threads but rather coroutines.
     time.sleep(0.5)
 
-# We are ready to send our TCP traffic.
-    tcp_send(str(src_IP), src_port, str(dst_IP), dst_port, [test_message], [0.0])
+    tcp_send(src_IP, src_port, dst_IP, dst_port, [test_message], [0.0])
 
-# Wait for the receiver thread to finish
     tcp_recieve_thread.join()
 
     failed = False
 
-# If the receiver did not receive any packets, we have failed
     if len(pkt_adr_log) == 0:
         failed = True
     else:
         adress = pkt_adr_log[0][1]
-# If the source of the received packets is not the same as the source we used, we failed
-        if adress != (str(src_IP), src_port):
+        if adress != (src_IP, src_port):
             failed = True
         else:
             sent_message_stream = test_message.decode()
             received_message_stream = "".join([t.decode() for (t, _) in pkt_adr_log])
-# If the messages received are not the same as the ones we sent, we have failed
             if sent_message_stream != received_message_stream:
                 failed = True
-# We have only tested one random TCP connection with one packet. If you want more throrough tests, expand this function as you please. In particular, do not forget to also test for UDP traffic.
-    print("TODO: EXPAND TRANSPARENCY TEST")
+
+    # UDP transparency check on a non-blacklisted tuple.
+    udp_message = bytes(''.join(random.choices(string.ascii_uppercase + string.digits, k=80)), encoding='utf8')
+    udp_pkt_log = []
+    udp_time_log = []
+
+    udp_listen_thread = threading.Thread(target=udp_listen, args=(dst_IP, dst_port, 1.0, udp_pkt_log, udp_time_log))
+    udp_listen_thread.start()
+    time.sleep(0.2)
+
+    udp_send(src_IP, src_port, dst_IP, dst_port, [udp_message], [0.0])
+
+    udp_listen_thread.join()
+
+    if len(udp_pkt_log) == 0:
+        failed = True
+    else:
+        udp_addr = udp_pkt_log[0][1]
+        if udp_addr != (src_IP, src_port):
+            failed = True
+        else:
+            received_udp = b"".join([t for (t, _) in udp_pkt_log])
+            if received_udp != udp_message:
+                failed = True
+
     return 1.0 - 1.0 * failed

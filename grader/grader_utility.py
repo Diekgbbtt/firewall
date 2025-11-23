@@ -114,3 +114,35 @@ def parse_portscan_config (filepath):
         for row in csv_reader:
             data = {"SynNum": int(row['SynNum']), "MaxPacketInterval": float(row['MaxPacketInterval'])}
             return data
+
+
+def udp_listen(ip, port, timelimit, pkt_log, time_log):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((ip, port))
+    sock.settimeout(timelimit)
+    try:
+        while True:
+            data, adr = sock.recvfrom(65535)
+            time_log.append(time.time_ns() * 1e-9)
+            pkt_log.append((data, adr))
+    except Exception:
+        pass
+    finally:
+        sock.close()
+
+
+def udp_send(src_ip, src_port, dst_ip, dst_port, transmission_data, transmission_intervals):
+    """
+    Send UDP datagrams from src to dst with provided payloads and inter-send intervals.
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((src_ip, src_port))
+    try:
+        for payload, wait in zip(transmission_data, transmission_intervals):
+            sock.sendto(payload, (dst_ip, dst_port))
+            if wait > 0:
+                time.sleep(wait)
+    finally:
+        sock.close()

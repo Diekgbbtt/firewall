@@ -41,7 +41,7 @@ def firewall_init ():
     task_selection["ttl"] = False
     task_selection["blacklist"] = False
     task_selection["quarternat"] = False
-    task_selection["halfnat"] = True
+    task_selection["halfnat"] = False
     task_selection["fullnat"] = False
     task_selection["ratelimit"] = False
     task_selection["ddos"] = False
@@ -50,40 +50,62 @@ def firewall_init ():
     return task_selection
 
 
-def distributed_rate_limit(pkt):
+def distributed_rate_limit(pkt, is_dropped: bool):
     # DDoS
-    pass
+    return True
 
-def synack_scan(pkt):
-    pass
+def synack_scan(pkt, is_dropped: bool):
+    return True
 
-def rate_limit(pkt):
+def rate_limit(pkt, is_dropped: bool):
 
-    pass
+    return True
 
-def ttl_within_range(pkt):
+def ttl_within_range(pkt, is_dropped: bool):
 
-    pass
+    return True
 
-def is_blacklisted(pkt):
+def is_blacklisted(pkt, is_dropped: bool):
 
-    pass
+    return True
 
 def empty_IPpayload(pkt):
 
-    return dpkt.ip.IP(pkt.get_payload()).data != 0
+    ip = dpkt.ip.IP(pkt.get_payload())
+
+    if len(ip.data) == 0: # should never happen as it should be an invalid packet
+        return False
+    else:
+        return True
+
+    # Serialized L4 payload length
+    # if isinstance(ip.data, dpkt.tcp.TCP):
+    #     empty = (len(ip.data.data) == 0)
+    # elif isinstance(ip.data, dpkt.udp.UDP):
+    #     empty = (len(ip.data.data) == 0)
+    # else:
+    #     empty = False
 
 def handle(pkt) -> bool :
     ip_pkt = dpkt.ip.IP(pkt.get_payload())
-    tcp_check = lambda p: synack_scan(p) if ip_pkt.p == dpkt.ip.IP_PROTO_TCP else True
-    return (
-        empty_IPpayload(pkt)
-        and is_blacklisted(pkt)
-        and ttl_within_range(pkt)
-        and rate_limit(pkt)
-        and tcp_check(pkt)
-        and distributed_rate_limit(pkt)
-    )
+    is_tcp = ip_pkt.p == dpkt.ip.IP_PROTO_TCP
+
+    # Evaluate all filters in order so accounting/ratelimits see every packet even if an earlier check fails.
+    allowed = True # TODO might be useful to carry a dict that enriches the previous filtering gates decisions rather than a boolean
+    payload_ok = empty_IPpayload(pkt)
+    allowed &= payload_ok
+    blacklist_ok = is_blacklisted(pkt, allowed)
+    allowed &= blacklist_ok
+    ttl_ok = ttl_within_range(pkt, allowed)
+    allowed &= ttl_ok
+    rate_ok = rate_limit(pkt, allowed)
+    allowed &= rate_ok
+    synack_ok = synack_scan(pkt, allowed) if is_tcp else True
+    allowed &= synack_ok
+    ddos_ok = distributed_rate_limit(pkt, allowed)
+    allowed &= ddos_ok
+    
+    return allowed
 
 
 # DO NOT MODIFY SIGNATURE
@@ -93,13 +115,10 @@ def firewall_packet_handler(pkt):
     global ttl_min
     global ttl_max
 
-    ip = dpkt.ip.IP(pkt.get_payload())
-    ts = pkt.get_timestamp()
-
     try:
         decision = handle(pkt)
     except Exception as e:
-        print("error : %s", e)
+        print("error : ", e)
         pkt.accept() # fail-open
     
     if decision:
