@@ -3,8 +3,12 @@ import socket
 import struct
 import random
 import time
-import ipaddress
 import csv
+from typing import Optional, Iterable, Union
+from scapy.layers.inet import IP, UDP, TCP
+from scapy.packet import Raw
+from scapy.sendrecv import send, sniff
+from scapy.all import raw
 
 def ip_to_bool_list(ip):
     ip_int = int(ip)
@@ -24,6 +28,42 @@ def randomize_bool_list_suffix (list, suffix_start):
     for i in range(suffix_start, list_len):
         list[i] = random.choice([True, False])
     return list
+
+
+def raw_listen(ip, timelimit, pkt_log, time_log):
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
+    sock.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
+    sock.bind((ip, 0))
+    sock.settimeout(timelimit)
+    try:
+        while True:
+            data = sock.recv(65535)
+            time_log.append(time.time_ns() * 1e-9)
+            pkt_log.append((data, None))
+    
+    except Exception as e:
+        return
+    finally:
+        sock.close()
+
+
+def raw_send(src_ip, dst_ip):
+    ip_pkt = IP(src=src_ip, dst=dst_ip, proto=0)
+    
+    print(ip_pkt.show())
+
+    raw_bytes = raw(ip_pkt)
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
+    sock.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
+    try:
+        sock.sendto(raw_bytes, (dst_ip, 0))
+    except ConnectionRefusedError as e:
+        return
+    finally:
+        sock.close()
+    return
 
 def tcp_listen (IP, port, timelimit, pkt_adr_log, time_log):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -114,6 +154,74 @@ def parse_portscan_config (filepath):
         for row in csv_reader:
             data = {"SynNum": int(row['SynNum']), "MaxPacketInterval": float(row['MaxPacketInterval'])}
             return data
+
+
+# Pre-assigned, non-overlapping loopback CIDRs for each test (ipnull through fullnat).
+_TEST_NET_ORDER = [
+    ("ipnull", "127.100.0.0/16"),
+    ("blacklist", "127.101.0.0/16"),
+    ("ratelimit", "127.102.0.0/16"),
+    ("portscan", "127.103.0.0/16"),
+    ("ttl", "127.104.0.0/16"),
+    ("transparency", "127.105.0.0/16"),
+    ("ddos", "127.106.0.0/16"),
+    ("halfnat", "127.107.0.0/16"),
+    ("quarternat", "127.108.0.0/16"),
+    ("fullnat", "127.109.0.0/16"),
+]
+
+TEST_NETS = [ipaddress.ip_network(cidr) for _, cidr in _TEST_NET_ORDER]
+TEST_NET_MAP = {name: net for (name, _), net in zip(_TEST_NET_ORDER, TEST_NETS)}
+
+
+def get_test_net(name_or_index: Union[str, int]):
+    """Return the deterministic CIDR reserved for a given test by name or position."""
+    if isinstance(name_or_index, int):
+        return TEST_NETS[name_or_index]
+    return TEST_NET_MAP[name_or_index]
+
+
+def host_in_net(net: ipaddress.IPv4Network, host_offset: int = 1) -> str:
+    """Pick a stable host inside the given net (offset from network address)."""
+    return str(ipaddress.ip_address(int(net.network_address) + host_offset))
+
+
+def build_ip_packet(src_ip: str, dst_ip: str, payload: bytes, proto_id: int):
+    """
+    Craft a bare IP packet with a specified protocol number and optional raw payload.
+    """
+    pkt = IP(src=src_ip, dst=dst_ip, proto=proto_id)
+    if payload:
+        pkt = pkt / Raw(payload)
+    return pkt
+
+
+def receive_packets(proto_id: Optional[int], dst_ips, duration: float, recv_log: list, iface: str = "lo"):
+    """
+    Sniff packets on iface for a limited time, optionally filtering by proto and dst IPs.
+    Captured packets are appended to recv_log.
+    """
+    if dst_ips is None:
+        dst_ips = []
+    if isinstance(dst_ips, str):
+        dst_ips = [dst_ips]
+
+    filters = ["ip"]
+    if proto_id is not None:
+        filters.append(f"proto {proto_id}")
+    if dst_ips:
+        host_expr = " or ".join([f"dst host {ip}" for ip in dst_ips])
+        filters.append(f"({host_expr})")
+    bpf = " and ".join(filters)
+
+    print("sniffer filtering expression :", bpf)
+
+    try:
+        packets = sniff(iface=iface, timeout=duration, filter=bpf)
+        recv_log.extend(packets)
+    except Exception:
+        # If sniff fails (e.g., pcap issues), leave log empty.
+        pass
 
 
 def udp_listen(ip, port, timelimit, pkt_log, time_log):

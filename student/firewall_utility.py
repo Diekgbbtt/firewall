@@ -16,11 +16,18 @@ def parse_nat_config (filepath):
 
 def parse_blacklist_config (filepath):
     data = []
+    def _parse_port_range(port_field):
+        parts = port_field.split('-')
+        if len(parts) == 1:
+            val = int(parts[0])
+            return val, val
+        return tuple(map(int, parts[:2]))
+
     with open(filepath, mode='r') as file:
         csv_reader = csv.DictReader(file)
         for row in csv_reader:
-            source_port_start, source_port_end = map(int, row['Source_Port'].split('-'))
-            dest_port_start, dest_port_end = map(int, row['Destination_Port'].split('-'))
+            source_port_start, source_port_end = _parse_port_range(row['Source_Port'])
+            dest_port_start, dest_port_end = _parse_port_range(row['Destination_Port'])
             data.append({
                 "Protocol": row['Protocol'],
                 "Source_IP": row['Source_IP'],
