@@ -33,7 +33,6 @@ def randomize_bool_list_suffix (list, suffix_start):
 def raw_listen(ip, timelimit, pkt_log, time_log):
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
-    sock.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
     sock.bind((ip, 0))
     sock.settimeout(timelimit)
     try:
@@ -82,9 +81,10 @@ def tcp_listen (IP, port, timelimit, pkt_adr_log, time_log):
     except Exception as e:
         pass
 
-def tcp_send (src_IP, src_port, dst_IP, dst_port, transmission_data, transmission_intervals, reconnect_wait = 1e-2, max_reconnects = 10):
+def tcp_send (src_IP, src_port, dst_IP, dst_port, transmission_data, transmission_intervals, ttl=64, reconnect_wait = 1e-2, max_reconnects = 10):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
+    sock.setsockopt(socket.IPPROTO_IP, socket.IP_TTL, ttl)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind((src_IP, src_port))
     sock.settimeout(reconnect_wait * max_reconnects)

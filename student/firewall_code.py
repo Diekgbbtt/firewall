@@ -41,7 +41,7 @@ def firewall_init ():
     # TODO: Select the tasks you want to be graded for here
     task_selection = dict()
     task_selection["ipnull"] = True
-    task_selection["ttl"] = False
+    task_selection["ttl"] = True
     task_selection["blacklist"] = True
     task_selection["quarternat"] = False
     task_selection["halfnat"] = False
@@ -66,7 +66,16 @@ def rate_limit(pkt, is_dropped: bool):
 
 def ttl_within_range(pkt, is_dropped: bool):
 
-    return True
+    if is_dropped:
+        return False
+
+    ip = dpkt.ip.IP(pkt.get_payload())
+    if ttl_min < ip.ttl < ttl_max:
+        return True
+    else:
+        return False
+
+
 
 def match_blacklisting_rules(proto: str, src_ip_addr, dst_ip_addr, src_port, dst_port):
     
@@ -157,7 +166,7 @@ def is_blacklisted(pkt, is_dropped: bool):
 def empty_IPpayload(pkt):
 
     ip = dpkt.ip.IP(pkt.get_payload())
-    # TODO firewall must be transparent to all traffic with no testing purpose, should I evaluate TCP/UDP here? --> check which type of traffci of traffic will be used fro transparency control
+    # TODO firewall must be transparent to all traffic with no testing purpose, should I evaluate TCP/UDP here? --> check which type of traffic will be used fro transparency control
     
     print(f"[empty_ip_payload] packet payload len : {len(ip.data)}")
     
@@ -182,13 +191,13 @@ def handle(pkt) -> bool :
     allowed &= payload_ok
     blacklist_ok = is_blacklisted(pkt, not(allowed))
     allowed &= blacklist_ok
-    # ttl_ok = ttl_within_range(pkt, allowed)
-    # allowed &= ttl_ok
-    # rate_ok = rate_limit(pkt, allowed)
+    ttl_ok = ttl_within_range(pkt, not(allowed))
+    allowed &= ttl_ok
+    # rate_ok = rate_limit(pkt, not(allowed))
     # allowed &= rate_ok
-    # synack_ok = synack_scan(pkt, allowed) if is_tcp else True
+    # synack_ok = synack_scan(pkt, not(allowed)) if is_tcp else True
     # allowed &= synack_ok
-    # ddos_ok = distributed_rate_limit(pkt, allowed)
+    # ddos_ok = distributed_rate_limit(pkt, not(allowed))
     # allowed &= ddos_ok
     
     return allowed
