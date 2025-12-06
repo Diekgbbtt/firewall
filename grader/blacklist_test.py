@@ -83,6 +83,7 @@ def blacklist_test ():
         sport = 40000
         dport = 50000
         
+        # add accepted packets
         packet_specs.append({
             "src": src_ip,
             "dst": dst_ip,
@@ -218,8 +219,8 @@ def blacklist_test ():
                 wrong_packet_handling += 1
                 # print("[check] expected drop but saw packet")
                 break
-        # print(wrong_packet_handling / len(packet_specs))
-        return 3.0 if wrong_packet_handling == 0 else 3.0 * wrong_packet_handling / len(packet_specs)
+        # print(f"wrong blacklisting test packets : {wrong_packet_handling}")
+        return 2.0 if wrong_packet_handling == 0 else 2.0 * (1 - (wrong_packet_handling / len(packet_specs)))
     except Exception as e:
         print(f"BLACKLIST test error: {e}")
         return 0.0
