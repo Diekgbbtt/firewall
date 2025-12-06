@@ -31,7 +31,7 @@ def ipnull_test():
         listen_duration = 1.0
         time_log = []
         
-        rrcvr_t = threading.Thread(target=raw_listen, args=(dst_ip, listen_duration, recv_log, time_log))
+        rrcvr_t = threading.Thread(target=raw_listen, args=(dst_ip, listen_duration, recv_log, time_log, 0, 1))
         rrcvr_t.start()
         time.sleep(0.05)
         urcvr_t = threading.Thread(target=udp_listen, args=(dst_ip, dport, listen_duration, recv_log, time_log))
@@ -67,7 +67,7 @@ def ipnull_test():
         saw_empty = any(l == 0 for l in payload_lengths)
         saw_payload = len([l > 0 for l in payload_lengths])
 
-        if not saw_payload==2 or saw_empty:
+        if saw_payload!=2 or saw_empty:
             print(f"IPNULL failed: saw_payload={saw_payload}, saw_empty={saw_empty}, payload_lengths={payload_lengths}")
             return 0.0
         return 1.0

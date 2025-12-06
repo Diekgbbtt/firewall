@@ -30,30 +30,49 @@ def randomize_bool_list_suffix (list, suffix_start):
     return list
 
 
-def raw_listen(ip, timelimit, pkt_log, time_log):
-
-    sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
-    sock.bind((ip, 0))
+def raw_listen(ip, timelimit, pkt_log, time_log, port: int = 0, proto: Optional[int] = None):
+    """
+    Receive raw IP packets destined to the given IP. Linux ignores the port for
+    raw sockets, but keeping it lets callers track which flow they're listening
+    to. `proto` should be an IP protocol number (e.g., socket.IPPROTO_TCP); if
+    None, we fall back to IPPROTO_IP which captures all protocols on Linux.
+    """
+    proto_num = socket.IPPROTO_IP if proto is None else proto
+    sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, proto_num)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((ip, port))
     sock.settimeout(timelimit)
     try:
         while True:
-            data = sock.recv(65535)
-            time_log.append(time.time_ns() * 1e-9)
-            pkt_log.append((data, None))
-    
+            try:
+                data = sock.recv(65535)
+                time_log.append(time.time_ns() * 1e-9)
+                pkt_log.append((data, None))
+            except socket.timeout:
+                break
+    except OSError as oe:
+        print(f"[raw_listen] socket error: {oe}")
     except Exception as e:
-        return
+        print(f"[raw_listen] unexpected error: {e}")
     finally:
         sock.close()
 
 
-def raw_send(src_ip, dst_ip):
-    ip_pkt = IP(src=src_ip, dst=dst_ip, proto=0)
-    
+def raw_send(src_ip, dst_ip, proto: int = 1, ttl: int = 64, transport_layer=None):
+    """
+    Craft and send a raw IP packet. The default is protocol 0 (reserved) with no
+    transport layer, but callers can override the IP protocol, TTL, and append
+    an optional transport/payload layer (bytes or a scapy layer).
+    """
+    ip_pkt = IP(src=src_ip, dst=dst_ip, proto=proto, ttl=ttl)
+    if transport_layer is not None:
+        if isinstance(transport_layer, bytes):
+            ip_pkt = ip_pkt / Raw(transport_layer)
+        else:
+            ip_pkt = ip_pkt / transport_layer
+
     print(ip_pkt.show())
-
     raw_bytes = raw(ip_pkt)
-
     sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
     sock.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
     try:
@@ -240,12 +259,13 @@ def udp_listen(ip, port, timelimit, pkt_log, time_log):
         sock.close()
 
 
-def udp_send(src_ip, src_port, dst_ip, dst_port, transmission_data, transmission_intervals):
+def udp_send(src_ip, src_port, dst_ip, dst_port, transmission_data, transmission_intervals, ttl=64):
     """
     Send UDP datagrams from src to dst with provided payloads and inter-send intervals.
     """
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.setsockopt(socket.IPPROTO_IP, socket.IP_TTL, ttl)
     sock.bind((src_ip, src_port))
     try:
         for payload, wait in zip(transmission_data, transmission_intervals):

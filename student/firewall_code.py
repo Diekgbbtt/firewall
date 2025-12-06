@@ -71,8 +71,10 @@ def ttl_within_range(pkt, is_dropped: bool):
 
     ip = dpkt.ip.IP(pkt.get_payload())
     if ttl_min < ip.ttl < ttl_max:
+        print(f"[ttl] valid ttl within range --> pass - ttl : {ip.ttl}")
         return True
     else:
+        print(f"[ttl] INvalid ttl NOT within range --> block - ttl : {ip.ttl}")
         return False
 
 
@@ -139,6 +141,7 @@ def is_blacklisted(pkt, is_dropped: bool):
         # print(f"[blacklist] unknown L4 proto id {ip.p}, allowing by default")
         return True
 
+    # TODO guard src and dst port access as some packets could not have them - ip.data.get("sport", None) and ip.data.get("dport", None)
     if ip.p == dpkt.ip.IP_PROTO_TCP and isinstance(ip.data, dpkt.tcp.TCP):
         src_port, dst_port = ip.data.sport, ip.data.dport
     elif ip.p == dpkt.ip.IP_PROTO_UDP and isinstance(ip.data, dpkt.udp.UDP):
